@@ -1,44 +1,51 @@
-from dotenv import load_dotenv
-import requests
-load_dotenv()
-
-from langchain.agents import create_agent
-from langchain.tools import tool
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
+from dotenv import load_dotenv
+from langchain.agents import create_agent
+from langchain.tools import tool
+from langchain_community.tools import TavilySearchResults
+import datetime
 
-model = ChatGoogleGenerativeAI(
-    model="gemini-2.5-flash",
-    temperature=0,
-)
+load_dotenv()
 
-@tool("get_weather", description="Get the current weather for a given location")
-def get_weather(location: str) -> str:
-    headers = {
-        "User-Agent": "Mozilla/5.0",
-        "Connection": "close"
-    }
+gemini = ChatGoogleGenerativeAI(model="gemini-1.5-pro")
+openai = ChatOpenAI(model="gpt-4.1-mini")
 
-    response = requests.get(
-        f"https://wttr.in/{location}?format=j1",
-        headers=headers,
-        timeout=(5, 30),
-    )
+search_tool = TavilySearchResults(search_depth="basic")
 
-    response.raise_for_status()
-    return response.json()
+@tool
+def get_system_time(format: str = "%Y-%m-%d %H:%M:%S"):
+    """ Returns the current date and time in the specified format """
+
+    current_time = datetime.datetime.now()
+    formatted_time = current_time.strftime(format)
+    return formatted_time
+
+
+tools = [search_tool, get_system_time]
+
+react_system_prompt = """
+You are a reasoning agent that can use tools.
+
+When solving a problem:
+1. Think step-by-step.
+2. If you need external information, call the appropriate tool.
+3. After receiving tool results, reason about them.
+4. Then produce a final clear answer for the user.
+
+Do not expose your internal reasoning unless necessary.
+Use tools only when needed.
+"""
 
 agent = create_agent(
-    model=model,
-    tools=[get_weather],
-    system_prompt="You are a helpful assistant",
+    tools=tools,
+    model=openai,
+    system_prompt=react_system_prompt,
 )
 
-response = agent.invoke({
-    "messages": [
-        {"role": "user", "content": "What is the weather like in New York?"}
-    ]
-})
 
-# print(response["messages"][-1].content)
-print(response)
+# Option B — pass message dict like your earlier working example
+response = agent.invoke({"messages":[{"role":"user","content":"When was SpaceX's last launch and how many days ago was that from this instant?"}]})
+print(response["messages"][-1].content)
+
+
