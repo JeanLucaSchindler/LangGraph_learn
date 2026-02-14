@@ -1,21 +1,44 @@
-from langchain_google_genai import GoogleGenerativeAI
-import dotenv
-from langchain.agents import initialize_agent, AgentType
-from langchain_community.tools import TavilySearchResults
+from dotenv import load_dotenv
+import requests
+load_dotenv()
 
-dotenv.load_dotenv()
+from langchain.agents import create_agent
+from langchain.tools import tool
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_openai import ChatOpenAI
 
-llm = GoogleGenerativeAI(model="gemini-2.5-flash-lite", temperature=0.7)  
-
-search_tool = TavilySearchResults(search_depth='basic') 
-tools = [search_tool]
-
-agent = initialize_agent(
-    tools=tools,
-    llm=llm,
-    agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
-    verbose=True
+model = ChatGoogleGenerativeAI(
+    model="gemini-2.5-flash",
+    temperature=0,
 )
 
-agent.invoke("What is the temperature in Paris right now?")
+@tool("get_weather", description="Get the current weather for a given location")
+def get_weather(location: str) -> str:
+    headers = {
+        "User-Agent": "Mozilla/5.0",
+        "Connection": "close"
+    }
 
+    response = requests.get(
+        f"https://wttr.in/{location}?format=j1",
+        headers=headers,
+        timeout=(5, 30),
+    )
+
+    response.raise_for_status()
+    return response.json()
+
+agent = create_agent(
+    model=model,
+    tools=[get_weather],
+    system_prompt="You are a helpful assistant",
+)
+
+response = agent.invoke({
+    "messages": [
+        {"role": "user", "content": "What is the weather like in New York?"}
+    ]
+})
+
+# print(response["messages"][-1].content)
+print(response)
